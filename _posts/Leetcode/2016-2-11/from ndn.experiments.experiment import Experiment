@@ -1,0 +1,67 @@
+from ndn.experiments.experiment import Experiment
+
+import time
+from itertools import cycle
+
+class ChronoSync(Experiment):
+
+    def __init__(self, args):
+        Experiment.__init__(self, args)
+    
+    def setup(self):
+    for host in self.net.hosts:
+        # Set strategy
+        host.nfd.setStrategy("/a/b", self.strategy)
+
+        # Start ping server
+        host.cmd("ndnpingserver /a/b/" + str(host) + " > ping-server &")
+
+        # Create folder to store ping data
+
+    # Wait for convergence time period
+    print "Waiting " + str(self.convergenceTime) + " seconds for convergence..."
+    time.sleep(self.convergenceTime)
+    print "...done"
+
+    # To check whether all the nodes of NLSR have converged
+    didNlsrConverge = True
+
+    # Checking for convergence
+    for host in self.net.hosts:
+        statusRouter = host.cmd("nfd-status -b | grep /ndn/edu/%C1.Router/cs/")
+        statusPrefix = host.cmd("nfd-status -b | grep /ndn/edu/")
+        didNodeConverge = True
+        for node in self.nodes.split(","):
+                if ("/ndn/edu/%C1.Router/cs/" + node) not in statusRouter:
+                    didNodeConverge = False
+                    didNlsrConverge = False
+                if str(host) != node and ("/a/b/" + node) not in statusPrefix:
+                    didNodeConverge = False
+                    didNlsrConverge = False
+
+        host.cmd("echo " + str(didNodeConverge) + " > convergence-result &")
+
+    if didNlsrConverge:
+        print("NLSR has successfully converged.")
+    else:
+        print("NLSR has not converged. Exiting...")
+        for host in self.net.hosts:
+            host.nfd.stop()
+        sys.exit(1)
+
+    for host in self.net.hosts:
+        # Start ndn-dump
+        for intf in host.intfNames():
+            ndnDumpOutputFile = "dump.%s_%s" % (intf, str(host.intf(intf).IP()))
+            host.cmd("sudo ndndump -f '.*.*'  -i %s > %s &" % (intf, ndnDumpOutputFile))
+
+    def run(self):
+        time.sleep(60)
+        for host in self.net.hosts:
+            if host.name == "a":
+                host.cmd("consumer /sync /consumer > /home/europa/Documents/ChronoSync/result/a.txt");
+            else:
+                host.cmd("producer /sync /producer > /home/europa/Documents/ChronoSync/result/a.txt")
+        time.sleep(200)
+
+Experiment.register("chronosync", ChronoSync)
